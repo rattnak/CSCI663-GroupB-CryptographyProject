@@ -1,5 +1,5 @@
-# CSCI 663 - Cryptography Project
-## Group B
+# Modern Cryptography: RSA Public-Key & AES Symmetric Encryption
+## CSCI 663 - Introduction to Cryptography - Group B
 
 Implementation of cryptographic algorithms based on the [Understanding Cryptography: From Established Symmetric and Asymmetric Ciphers to Post-Quantum Algorithms](https://learn.lajevardi.id.ir/Cryptography/Refrence/2.pdf) textbook.
 
