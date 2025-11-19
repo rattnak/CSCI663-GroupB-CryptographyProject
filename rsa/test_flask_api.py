@@ -301,6 +301,90 @@ class TestFlaskRSAAPI(unittest.TestCase):
         self.assertTrue(verify_data['success'])
         self.assertTrue(verify_data['valid'])
 
+
+class TestFlaskAESEndpoints(unittest.TestCase):
+    """Tests for AES endpoints added to the combined Flask app."""
+
+    def setUp(self):
+        self.app = app.test_client()
+        self.app.testing = True
+        keypairs.clear()
+
+    def tearDown(self):
+        keypairs.clear()
+
+    def test_aes_health(self):
+        resp = self.app.get('/api/aes/health')
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(data.get('status'), 'ok')
+
+    def test_aes_generate_key_and_roundtrip(self):
+        # Generate AES key
+        resp = self.app.post(
+            '/api/aes/generate-key',
+            data=json.dumps({'size': 128}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertTrue(data['success'])
+        key_hex = data['key']
+
+        # Encrypt using returned key
+        message = 'Hello AES from combined API'
+        enc = self.app.post(
+            '/api/aes/encrypt',
+            data=json.dumps({'message': message, 'key': key_hex, 'size': 128}),
+            content_type='application/json'
+        )
+        self.assertEqual(enc.status_code, 200)
+        enc_data = json.loads(enc.data)
+        self.assertTrue(enc_data['success'])
+        ciphertext = enc_data['ciphertext']
+
+        # Decrypt
+        dec = self.app.post(
+            '/api/aes/decrypt',
+            data=json.dumps({'ciphertext': ciphertext, 'key': key_hex, 'size': 128}),
+            content_type='application/json'
+        )
+        self.assertEqual(dec.status_code, 200)
+        dec_data = json.loads(dec.data)
+        self.assertTrue(dec_data['success'])
+        self.assertEqual(dec_data['plaintext'], message)
+
+    def test_aes_generate_key_invalid_size(self):
+        resp = self.app.post(
+            '/api/aes/generate-key',
+            data=json.dumps({'size': 100}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertFalse(data['success'])
+
+    def test_aes_encrypt_missing_fields(self):
+        resp = self.app.post(
+            '/api/aes/encrypt',
+            data=json.dumps({'message': 'x'}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertFalse(data['success'])
+
+    def test_aes_decrypt_bad_ciphertext(self):
+        # Provide an invalid hex string
+        resp = self.app.post(
+            '/api/aes/decrypt',
+            data=json.dumps({'ciphertext': 'nothex', 'key': 'k', 'size': 128}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = json.loads(resp.data)
+        self.assertFalse(data['success'])
+
     def test_verify_invalid_signature(self):
         # Test verifying an invalid signature.
         # Generate keys
@@ -504,6 +588,12 @@ def run_api_tests():
 
     # Add all test cases
     suite.addTests(loader.loadTestsFromTestCase(TestFlaskRSAAPI))
+    # Add AES endpoint tests for the combined Flask app
+    try:
+        suite.addTests(loader.loadTestsFromTestCase(TestFlaskAESEndpoints))
+    except NameError:
+        # Test class may be defined below depending on file edits
+        pass
 
     # Run tests
     runner = unittest.TextTestRunner(verbosity=2)

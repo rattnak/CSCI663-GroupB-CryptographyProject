@@ -9,6 +9,12 @@ Flask REST API with simplified function signatures:
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from rsa import generate_keypair, encrypt, decrypt, sign, verify
+import os, sys
+# Ensure the project root (parent of this `rsa` folder) is on sys.path so
+# the sibling `aes` package can be imported when this script is executed
+# directly (e.g. `python rsa/flask_rsa.py`).
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from aes import generate_key as aes_generate_key, encrypt as aes_encrypt, decrypt as aes_decrypt
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -318,6 +324,75 @@ def api_verify():
         }), 500
 
 
+@app.route('/api/aes/health', methods=['GET'])
+def aes_health_check():
+    # Simple AES health endpoint
+    return jsonify({
+        'status': 'ok',
+        'message': 'AES endpoints are available under /api/aes/*',
+        'version': '1.0'
+    })
+
+
+@app.route('/api/aes/generate-key', methods=['POST'])
+def api_aes_generate_key():
+    try:
+        data = request.get_json() or {}
+        size = int(data.get('size', 128))
+        if size not in (128, 192, 256):
+            return jsonify({'success': False, 'error': 'Invalid size. Choose 128,192,256'}), 400
+        key_hex = aes_generate_key(size)
+        return jsonify({'success': True, 'key': key_hex, 'size': size})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/aes/encrypt', methods=['POST'])
+def api_aes_encrypt():
+    try:
+        data = request.get_json() or {}
+        message = data.get('message', '')
+        key = data.get('key', '')
+        size = int(data.get('size', 128))
+
+        if not message:
+            return jsonify({'success': False, 'error': 'Message cannot be empty'}), 400
+        if not key:
+            return jsonify({'success': False, 'error': 'Key required'}), 400
+        if size not in (128, 192, 256):
+            return jsonify({'success': False, 'error': 'Invalid size. Choose 128,192,256'}), 400
+
+        ciphertext = aes_encrypt(message, key, size)
+        return jsonify({'success': True, 'ciphertext': ciphertext, 'original_message': message})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/aes/decrypt', methods=['POST'])
+def api_aes_decrypt():
+    try:
+        data = request.get_json() or {}
+        ciphertext = data.get('ciphertext', '')
+        key = data.get('key', '')
+        size = int(data.get('size', 128))
+
+        if not ciphertext:
+            return jsonify({'success': False, 'error': 'Ciphertext cannot be empty'}), 400
+        if not key:
+            return jsonify({'success': False, 'error': 'Key required'}), 400
+        if size not in (128, 192, 256):
+            return jsonify({'success': False, 'error': 'Invalid size. Choose 128,192,256'}), 400
+
+        plaintext = aes_decrypt(ciphertext, key, size)
+        return jsonify({'success': True, 'plaintext': plaintext, 'original_ciphertext': ciphertext})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/get-keys', methods=['POST'])
 def api_get_keys():
     """
@@ -424,6 +499,12 @@ if __name__ == '__main__':
     print("  POST /api/verify")
     print("  POST /api/get-keys")
     print("  GET  /api/example")
+    print("")
+    print("AES Endpoints (same process):")
+    print("  GET  /api/aes/health")
+    print("  POST /api/aes/generate-key")
+    print("  POST /api/aes/encrypt")
+    print("  POST /api/aes/decrypt")
     print("\nPress Ctrl+C to stop the server") #Basic instruction.
     print("=" * 70)
 
